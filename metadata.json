@@ -1,0 +1,6 @@
+{
+  "name": "Sindh Tenders",
+  "description": "A dashboard to browse, search, and download tender documents from the Sindh e-Procurement portal via proxy APIs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
