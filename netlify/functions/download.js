@@ -1,3 +1,5 @@
+const https = require('https');
+
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -11,40 +13,23 @@ exports.handler = async (event) => {
 
   const body = JSON.parse(event.body || '{}');
 
-  try {
-    const response = await fetch(
-      'https://apiprd.eprocure.gov.pk/documentmanagementsystem/dmspublicapi/1.0.0/api/v1/dmspublicapi/downloadportalfilebyguid',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Basic YWRtaW46cHByYTEy',
-          'officedetail': 'Sindh-PPRA-Dev',
-          'origin': 'https://portalsindh.eprocure.gov.pk',
-          'referer': 'https://portalsindh.eprocure.gov.pk/',
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    const buffer = await response.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
-
-    return {
-      statusCode: 200,
+  return new Promise((resolve) => {
+    const postData = JSON.stringify(body);
+    
+    const options = {
+      hostname: 'apiprd.eprocure.gov.pk',
+      path: '/documentmanagementsystem/dmspublicapi/1.0.0/api/v1/dmspublicapi/downloadportalfilebyguid',
+      method: 'POST',
       headers: {
-        ...headers,
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="tender.pdf"',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+        'Authorization': 'Basic YWRtaW46cHByYTEy',
+        'officedetail': 'Sindh-PPRA-Dev',
+        'origin': 'https://portalsindh.eprocure.gov.pk',
+        'referer': 'https://portalsindh.eprocure.gov.pk/',
       },
-      body: base64,
-      isBase64Encoded: true,
     };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: err.message }),
-    };
-  }
-};
+
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chu
