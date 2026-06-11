@@ -213,7 +213,7 @@ export default function App() {
   };
 
   // Download PDF asset action handler
-  const handleDownloadFile = async (doc: DocumentItem) => {
+  const handleDownloadFile = async (doc: DocumentItem, tenderContext?: TenderItem | null) => {
     const fileId = getDocumentID(doc);
     const fileGuid = getDocumentGUID(doc);
     const title = getDocumentTitle(doc);
@@ -228,18 +228,35 @@ export default function App() {
 
     try {
       const blob = await downloadDocument(fileId, fileGuid, title);
-      const blobUrl = window.URL.createObjectURL(blob);
       
+      // Check if PDF is encrypted/password protected
+      let isPasswordProtected = false;
+      try {
+        const slice = blob.slice(0, 4000);
+        const text = await slice.text();
+        if (text.includes('/Encrypt')) {
+          isPasswordProtected = true;
+        }
+      } catch (err) {
+        console.warn('PDF encryption check failed', err);
+      }
+
+      if (isPasswordProtected) {
+        addToast('info', 'This document may be password protected. Please visit portalsindh.eprocure.gov.pk to access login credentials.');
+      }
+
+      const activeTender = tenderContext || selectedTender;
+      const tenderNo = activeTender ? getTenderNo(activeTender) : 'N/A';
+      const docTitleClean = title.toLowerCase().endsWith('.pdf') ? title.slice(0, -4) : title;
+      const filename = `${tenderNo}-${docTitleClean}.pdf`;
+
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.setAttribute('download', title);
+      link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
-      
-      // Post cleanup
-      if (link.parentNode) {
-        link.parentNode.removeChild(link);
-      }
+      link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
 
       // Log download history state
@@ -248,16 +265,107 @@ export default function App() {
           id: fileId.toString(),
           title,
           timestamp: new Date().toLocaleTimeString(),
-          tenderNo: selectedTender ? getTenderNo(selectedTender) : 'N/A',
+          tenderNo,
         },
         ...prev
       ]);
-      addToast('success', `Document "${title}" saved successfully!`);
+      
+      if (!isPasswordProtected) {
+        addToast('success', `Document "${filename}" saved successfully!`);
+      }
     } catch (err: any) {
       console.error(err);
       addToast('error', `Download aborted: ${err.message || err}`);
     } finally {
       setDownloadingStates(prev => ({ ...prev, [fileId]: false }));
+    }
+  };
+
+  // Master action to fetch documents for a tender and immediately download the first one
+  const handleTenderCardDownload = async (tender: TenderItem, e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent selecting the card
+    const docId = getTenderID(tender);
+    
+    if (String(docId) === 'N/A' || !docId) {
+      addToast('error', `This tender lacks a valid document identifier.`);
+      return;
+    }
+
+    const tenderNo = getTenderNo(tender);
+    addToast('info', `Retrieving attachment list for Tender #${tenderNo}...`);
+
+    // Track state of loading for this specific tender's button
+    setDownloadingStates(prev => ({ ...prev, [`tender-${docId}`]: true }));
+
+    try {
+      const docResults = await fetchTenderDocuments(docId);
+      if (docResults.length === 0) {
+        addToast('error', `No documents available for Tender #${tenderNo}`);
+        return;
+      }
+      
+      // Auto download the first document
+      const mainDoc = docResults[0];
+      const fileId = getDocumentID(mainDoc);
+      const fileGuid = getDocumentGUID(mainDoc);
+      const documentTitle = getDocumentTitle(mainDoc);
+      
+      if (String(fileId) === 'N/A' || !fileId || !fileGuid) {
+        addToast('error', `Cannot download document (missing GUID/ID attributes)`);
+        return;
+      }
+      
+      addToast('info', `Downloading main document: ${documentTitle}...`);
+      const blob = await downloadDocument(fileId, fileGuid, documentTitle);
+      
+      // Check if PDF is encrypted/password protected
+      let isPasswordProtected = false;
+      try {
+        const slice = blob.slice(0, 4000);
+        const text = await slice.text();
+        if (text.includes('/Encrypt')) {
+          isPasswordProtected = true;
+        }
+      } catch (err) {
+        console.warn('PDF encryption check failed', err);
+      }
+
+      if (isPasswordProtected) {
+        addToast('info', 'This document may be password protected. Please visit portalsindh.eprocure.gov.pk to access login credentials.');
+      }
+
+      // Format filename
+      const titleClean = documentTitle.toLowerCase().endsWith('.pdf') ? documentTitle.slice(0, -4) : documentTitle;
+      const filename = `${tenderNo}-${titleClean}.pdf`;
+      
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      // Log download history state
+      setDownloadHistory(prev => [
+        {
+          id: fileId.toString(),
+          title: documentTitle,
+          timestamp: new Date().toLocaleTimeString(),
+          tenderNo,
+        },
+        ...prev
+      ]);
+
+      if (!isPasswordProtected) {
+        addToast('success', `Document "${filename}" downloaded successfully!`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      addToast('error', `Download failed: ${err.message || err}`);
+    } finally {
+      setDownloadingStates(prev => ({ ...prev, [`tender-${docId}`]: false }));
     }
   };
 
@@ -536,22 +644,41 @@ export default function App() {
                             {title}
                           </h3>
 
-                          {/* Meta grid */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-2 border-t border-dashed border-slate-100/10 text-xs">
-                            <span className={`flex items-center gap-2 ${
-                              isSelected ? 'text-slate-300' : 'text-slate-500'
-                            }`}>
-                              <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="truncate">{dept}</span>
-                            </span>
-                            {pubDate !== 'N/A' && (
-                              <span className={`flex items-center gap-2 sm:justify-end ${
+                          {/* Meta grid and Download Button */}
+                          <div className="flex items-center justify-between gap-4 mt-2 pt-2 border-t border-dashed border-slate-100/10 text-xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-1 min-w-0">
+                              <span className={`flex items-center gap-2 ${
                                 isSelected ? 'text-slate-300' : 'text-slate-500'
-                              }`}>
-                                <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                Published: {pubDate.split(',')[0]}
+                              } min-w-0`}>
+                                <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span className="truncate">{dept}</span>
                               </span>
-                            )}
+                              {pubDate !== 'N/A' && (
+                                <span className={`flex items-center gap-2 ${
+                                  isSelected ? 'text-slate-300' : 'text-slate-500'
+                                }`}>
+                                  <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  Published: {pubDate.split(',')[0]}
+                                </span>
+                              )}
+                            </div>
+
+                            <button
+                              disabled={downloadingStates[`tender-${id}`]}
+                              onClick={(e) => handleTenderCardDownload(item, e)}
+                              className={`p-1.5 rounded-lg shrink-0 transition-all cursor-pointer flex items-center justify-center border hover:scale-105 active:scale-95 ${
+                                isSelected 
+                                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500/30' 
+                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-100 hover:border-emerald-200'
+                              }`}
+                              title="Download Main PDF Attachment"
+                            >
+                              {downloadingStates[`tender-${id}`] ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Download className="w-3.5 h-3.5" />
+                              )}
+                            </button>
                           </div>
                         </div>
                       </motion.div>
