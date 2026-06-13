@@ -1,8 +1,8 @@
 import { TenderItem, DocumentItem, APILog } from '../types';
 
-const TENDERS_API = 'https://eprocure-proxy.vercel.app/api/proxy?endpoint=tenders';
-const DOCUMENTS_API = 'https://eprocure-proxy.vercel.app/api/proxy?endpoint=documents';
-const DOWNLOAD_API = 'https://eprocure-proxy.vercel.app/api/download';
+const TENDERS_API = '/api/tenders';
+const DOCUMENTS_API = '/api/documents';
+const DOWNLOAD_API = '/api/download';d';
 
 let apiLogs: APILog[] = [];
 let onLogChange: ((logs: APILog[]) => void) | null = null;
