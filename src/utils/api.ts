@@ -1,7 +1,7 @@
 import { TenderItem, DocumentItem, APILog } from '../types';
 
-const TENDERS_API = '/.netlify/functions/proxy?endpoint=tenders';
-const DOCUMENTS_API = '/.netlify/functions/proxy?endpoint=documents';
+const TENDERS_API = 'https://eprocure-proxy.vercel.app/api/proxy?endpoint=tenders';
+const DOCUMENTS_API = 'https://eprocure-proxy.vercel.app/api/proxy?endpoint=documents';
 const DOWNLOAD_API = 'https://eprocure-proxy.vercel.app/api/download';
 
 let apiLogs: APILog[] = [];
